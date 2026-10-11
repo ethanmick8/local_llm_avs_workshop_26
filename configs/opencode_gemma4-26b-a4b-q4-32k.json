@@ -1,0 +1,8 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "model": "llama-server/gemma-4-26B-A4B-it-Q4_0", "small_model": "llama-server/gemma-4-26B-A4B-it-Q4_0",
+  "enabled_providers": ["llama-server"], "instructions": ["AGENTS.md"],
+  "compaction": {"auto": true, "prune": true, "tail_turns": 2, "preserve_recent_tokens": 4096, "reserved": 8192},
+  "permission": {"read": "allow", "glob": "allow", "grep": "allow", "list": "allow", "lsp": "allow", "todowrite": "allow", "task": "allow", "edit": "allow", "bash": "allow", "external_directory": "deny", "webfetch": "deny", "websearch": "deny"},
+  "provider": {"llama-server": {"name": "Local llama.cpp", "npm": "@ai-sdk/openai-compatible", "options": {"baseURL": "{env:LLAMA_SERVER_BASE_URL}", "apiKey": "{env:LLAMA_SERVER_API_KEY}", "timeout": 600000, "chunkTimeout": 120000}, "models": {"gemma-4-26B-A4B-it-Q4_0": {"name": "Gemma 4 26B-A4B Q4", "reasoning": true, "interleaved": {"field": "reasoning_content"}, "limit": {"context": 32768, "output": 8192}}}}}
+}

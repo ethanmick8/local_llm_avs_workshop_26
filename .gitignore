@@ -1,0 +1,13 @@
+# Generated data: models, tool builds, workspaces, keys, and logs.
+/local_llm_data/
+/reference_repo/
+# Stray llama.cpp checkout/build; setup builds into local_llm_data/tools.
+/tools/
+/llm_workspace/
+# Editor and unrelated tool artifacts.
+/.vscode/
+/.github/modernize/
+__pycache__/
+*.gguf
+*Zone.Identifier
+*:Zone - Copy.Identifier

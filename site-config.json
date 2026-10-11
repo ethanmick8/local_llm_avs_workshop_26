@@ -1,0 +1,22 @@
+{
+  "conda_environment": "ml",
+  "data_root": "local_llm_data",
+  "server": {
+    "host": "127.0.0.1",
+    "port": 8081,
+    "startup_timeout_seconds": 30,
+    "shutdown_timeout_seconds": 10
+  },
+  "tools": {
+    "llama_cpp_commit": "dc72703fc69698b1ea68ece8d2dd8a96e6a4e1fe",
+    "opencode_version": "1.18.32",
+    "opencode_sha256": "3046e0404fdc60fb80307e7a47824ba07477364178a4d09baa8548496dd6d43b",
+    "pyqt_version": "5.15.11",
+    "cuda_architecture": "86"
+  },
+  "docker": {
+    "cuda_version": "12.8.1",
+    "ubuntu_version": "24.04",
+    "image_repository": "local-llm-opencode"
+  }
+}
