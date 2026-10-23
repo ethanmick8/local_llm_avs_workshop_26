@@ -31,6 +31,7 @@ load_site
 require_ml_environment "$conda_environment"
 resolve_data_root "$data_root_arg"
 load_profile "$profile_arg"
+[[ "$backend" == cuda ]] || die "benchmark_profile.sh supports CUDA profiles only: $profile_id is $backend"
 resolve_reasoning_policy
 verify_model_file
 workdir="$data_root/benchmarks/$profile_id"

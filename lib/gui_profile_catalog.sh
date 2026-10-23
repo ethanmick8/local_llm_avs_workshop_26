@@ -25,6 +25,9 @@ build_gui_profile_catalog() (
     }
 
     for profile in "${profile_files[@]}"; do
+        # The GUI launches host-native, where only CUDA profiles run; CPU
+        # profiles are Docker-only and are omitted rather than rejected.
+        [[ "$(jq -r '.backend // empty' "$profile" 2>/dev/null || true)" != cpu ]] || continue
         expected_id=$(basename "$profile" .json)
         config_rel=$(jq -r '.opencode_config // empty' "$profile" 2>/dev/null || true)
         if error=$( {

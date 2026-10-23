@@ -14,11 +14,14 @@ Usage: launch_open_code_docker.sh --build
        launch_open_code_docker.sh [--build] [--check|--dry-run] [--workspace-id ID]
                                   [--data-root ABSOLUTE_PATH] <profile> <workdir>
 
-Runs launch_open_code.sh inside the pinned CUDA container. No Conda environment
-is required on the host; Docker with the NVIDIA Container Toolkit is.
---build rebuilds the image even if it already exists.
+Runs launch_open_code.sh inside the pinned container for the profile's
+backend. No Conda environment is required on the host. CUDA profiles need
+Docker with the NVIDIA Container Toolkit; CPU profiles (*-cpu) need only Docker
+and are much slower.
+--build rebuilds the image even if it already exists. A bare --build builds the
+CUDA image, or the CPU image with LOCAL_LLM_BACKEND=cpu.
 Operational overrides: REASONING_EFFORT=low|medium|high, LOCAL_LLM_PORT,
-LOCAL_LLM_VERIFY_MODEL_HASH=1, LOCAL_LLM_GPU_DEVICE (default 0).
+LOCAL_LLM_VERIFY_MODEL_HASH=1, LOCAL_LLM_GPU_DEVICE (CUDA only, default 0).
 EOF
 }
 
@@ -55,14 +58,33 @@ jq -e '
   (.docker.ubuntu_version|test("^[0-9]+\\.[0-9]+$")) and
   (.docker.image_repository|test("^[a-z0-9][a-z0-9._/-]*$"))
 ' "$site_config" >/dev/null || die "invalid docker section in site config: $site_config"
+
+# The profile names its backend, which selects the image target. Full profile
+# validation happens inside the container; this only picks the image.
+if (( build_only == 1 )); then
+    backend=${LOCAL_LLM_BACKEND:-cuda}
+else
+    [[ "${positionals[0]}" =~ ^[a-z0-9][a-z0-9-]+$ ]] || die "invalid profile ID: ${positionals[0]}"
+    [[ -f "$script_dir/profiles/${positionals[0]}.json" ]] || die "unknown profile: ${positionals[0]}"
+    backend=$(jq -r '.backend // empty' "$script_dir/profiles/${positionals[0]}.json")
+    [[ -z "${LOCAL_LLM_BACKEND:-}" || "$LOCAL_LLM_BACKEND" == "$backend" ]] ||
+        die "LOCAL_LLM_BACKEND=$LOCAL_LLM_BACKEND conflicts with profile backend: ${backend:-missing}"
+fi
+[[ "$backend" == cuda || "$backend" == cpu ]] || die "backend must be cuda or cpu: ${backend:-missing}"
+
 llama_cpp_commit=$(jq -r .tools.llama_cpp_commit "$site_config")
 opencode_version=$(jq -r .tools.opencode_version "$site_config")
 cuda_version=$(jq -r .docker.cuda_version "$site_config")
-image="$(jq -r .docker.image_repository "$site_config"):${llama_cpp_commit:0:12}-oc$opencode_version-cuda$cuda_version"
+image_tag="${llama_cpp_commit:0:12}-oc$opencode_version"
+if [[ "$backend" == cuda ]]; then image_tag+="-cuda$cuda_version"; else image_tag+="-cpu"; fi
+image="$(jq -r .docker.image_repository "$site_config"):$image_tag"
 
-if (( force_build == 1 )) || ! docker image inspect "$image" >/dev/null 2>&1; then
-    echo "Building $image (llama.cpp CUDA build; first build takes a while)..."
-    docker build \
+# Images built before backend selection existed carry no backend label; rebuild
+# them rather than run a container whose backend the launcher cannot confirm.
+image_backend=$(docker image inspect --format '{{index .Config.Labels "local-llm.backend"}}' "$image" 2>/dev/null || true)
+if (( force_build == 1 )) || [[ "$image_backend" != "$backend" ]]; then
+    echo "Building $image (llama.cpp $backend build; first build takes a while)..."
+    docker build --target "$backend" \
         --build-arg "CUDA_VERSION=$cuda_version" \
         --build-arg "UBUNTU_VERSION=$(jq -r .docker.ubuntu_version "$site_config")" \
         --build-arg "LLAMA_CPP_COMMIT=$llama_cpp_commit" \
@@ -92,8 +114,10 @@ check_mount_path() {
 check_mount_path "data root" "$data_root"
 check_mount_path "workspace" "$workdir"
 
-gpu_device=${LOCAL_LLM_GPU_DEVICE:-0}
-[[ "$gpu_device" =~ ^([0-9]+|GPU-[0-9a-fA-F-]+)$ ]] || die "LOCAL_LLM_GPU_DEVICE must be one GPU index or UUID"
+if [[ "$backend" == cuda ]]; then
+    gpu_device=${LOCAL_LLM_GPU_DEVICE:-0}
+    [[ "$gpu_device" =~ ^([0-9]+|GPU-[0-9a-fA-F-]+)$ ]] || die "LOCAL_LLM_GPU_DEVICE must be one GPU index or UUID"
+fi
 
 # Rootless Docker maps container root to the invoking user; rootful Docker
 # needs the host UID/GID so generated files stay owned by the caller.
@@ -105,7 +129,6 @@ fi
 
 docker_args=(
     run --rm --interactive --init
-    --gpus "device=$gpu_device"
     --user "$container_user"
     --cap-drop ALL --security-opt no-new-privileges
     --env HOME=/tmp --env "TERM=${TERM:-xterm-256color}"
@@ -113,6 +136,8 @@ docker_args=(
     --mount "type=bind,src=$data_root,dst=$data_root"
     --workdir /opt/local_llm
 )
+# CPU containers get no GPU device at all.
+[[ "$backend" != cuda ]] || docker_args+=(--gpus "device=$gpu_device")
 [[ "$workdir" == "$data_root" || "$workdir" == "$data_root"/* ]] ||
     docker_args+=(--mount "type=bind,src=$workdir,dst=$workdir")
 [[ -t 0 && -t 1 ]] && docker_args+=(--tty)

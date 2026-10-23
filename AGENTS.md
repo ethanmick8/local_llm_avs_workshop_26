@@ -4,7 +4,9 @@
 
 This repository runs a pinned CUDA llama.cpp server and OpenCode locally on a
 single RTX 3090 Linux host (native or WSL2), either from the `ml` Conda
-environment or inside the pinned Docker image. It does not target Slurm,
+environment or inside the pinned Docker image. A Docker-only CPU fallback image
+exists for hosts without an NVIDIA GPU; it is explicitly slow and limited to the
+Gemma MoE profile. It does not target Slurm,
 Enroot, Windows-native execution, or remote cluster storage. Never restart,
 shut down, update, or reconfigure WSL, Windows, or the Docker daemon from
 repository automation.
@@ -29,10 +31,13 @@ It must stay a thin host wrapper: build the toolchain-only image from
 repository read-only and the data root and workspace at their host paths, and
 run `launch_open_code.sh` inside the container. The image holds only
 llama-server and OpenCode; it never contains models, keys, or repository
-profiles. The wrapper publishes no ports, exposes exactly one GPU
-(`LOCAL_LLM_GPU_DEVICE`, default 0), and runs as the invoking user.
+profiles. The profile's `backend` (`cuda` or `cpu`) selects the Dockerfile
+target and image tag; the image bakes in `LOCAL_LLM_BACKEND` and the launcher
+refuses a profile whose backend differs. The wrapper publishes no ports, exposes
+exactly one GPU (`LOCAL_LLM_GPU_DEVICE`, default 0) for CUDA and no GPU for CPU,
+and runs as the invoking user.
 
-The three checked-in profiles are authoritative. Context, output, compaction,
+The checked-in profiles are authoritative. Context, output, compaction,
 GPU layers, cache, batching, sampling, and reasoning policy belong in profiles
 and exact OpenCode configs. Operational overrides are limited to data root,
 workspace ID, port, reasoning effort, and opt-in model hash verification.
@@ -66,10 +71,15 @@ Full data resets may remove only the known generated `shared`, `workspaces`,
 `benchmarks`, `validations`, and `gui` directories after an exact preview and
 confirmation. They must preserve `models`, `tools`, and unknown entries.
 
-All profiles assume one RTX 3090, one parallel slot, all layers on GPU, Q8 K/V
-cache, Flash Attention, and no automatic fitting or CPU layer offload. Do not
-add multimodal projectors, speculative draft models, CPU offload, multiple GPUs,
-or LAN binding without an explicit design change and real VRAM validation.
+CUDA profiles assume one RTX 3090, one parallel slot, all layers on GPU, Q8 K/V
+cache, Flash Attention, and no automatic fitting or CPU layer offload. CPU
+profiles are Docker-only, limited to the `gemma4` family, and use
+`gpu_layers: 0`, `--device none`, no KV offload, and `"auto"` threads so
+llama.cpp sizes to the host; they keep Q8 K/V cache, Flash Attention, and the
+same limits. Host-native runs, the GUI, and benchmarking are CUDA-only. Do not
+add multimodal projectors, speculative draft models, partial CPU offload,
+multiple GPUs, other GPU backends (e.g. Vulkan), or LAN binding without an
+explicit design change and real VRAM validation.
 
 ## Development
 

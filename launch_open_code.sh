@@ -17,7 +17,8 @@ usage() {
 Usage: launch_open_code.sh [--check|--dry-run] [--workspace-id ID]
                            [--data-root ABSOLUTE_PATH] <profile> <workdir>
 
-Activate the ml Conda environment first. Operational overrides:
+Activate the ml Conda environment first. CPU profiles (*-cpu) run only through
+launch_open_code_docker.sh. Operational overrides:
 REASONING_EFFORT=low|medium|high, LOCAL_LLM_PORT, LOCAL_LLM_VERIFY_MODEL_HASH=1.
 EOF
 }
@@ -39,11 +40,13 @@ while (( $# )); do
 done
 (( ${#positionals[@]} == 2 )) || { usage; exit 1; }
 
-for command in jq curl openssl sha256sum realpath nvidia-smi; do require_command "$command"; done
+for command in jq curl openssl sha256sum realpath; do require_command "$command"; done
 load_site
 require_ml_environment "$conda_environment"
 resolve_data_root "$data_root_arg"
 load_profile "${positionals[0]}"
+resolve_backend
+require_backend_commands
 resolve_reasoning_policy
 requested_workdir=${positionals[1]}
 [[ -d "$requested_workdir" ]] || die "workspace does not exist: $requested_workdir"
@@ -55,6 +58,7 @@ require_command opencode
 verify_model_file
 
 echo "Profile: $profile_id"
+echo "Backend: $backend"
 echo "Model: $model_file"
 echo "Workspace: $workdir"
 echo "Workspace ID: $workspace_id"
@@ -63,7 +67,7 @@ echo "Reasoning effort: $reasoning_effort"
 if [[ "$mode" == check ]]; then
     "$llama_server_bin" --version >/dev/null
     opencode --version >/dev/null
-    nvidia-smi --query-gpu=name,memory.total --format=csv,noheader
+    print_backend_hardware
     echo "Launch preflight completed; no server was started."
     exit 0
 fi
@@ -99,6 +103,7 @@ trap cleanup EXIT
 trap 'exit 130' INT
 trap 'exit 143' TERM HUP
 
+print_cpu_disclaimer
 start_server
 echo "Logs: $run_dir/logs"
 echo "Starting OpenCode; exiting OpenCode will stop llama-server."

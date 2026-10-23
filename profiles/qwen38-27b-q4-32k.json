@@ -2,6 +2,7 @@
   "id": "qwen38-27b-q4-32k",
   "model": "Qwen3.8-27B",
   "family": "qwen3.8",
+  "backend": "cuda",
   "gguf": "Qwen3.8-27B-UD-Q4_K_M.gguf",
   "source": {
     "url": "https://huggingface.co/unsloth/Qwen3.8-27B-GGUF/resolve/main/Qwen3.8-27B-UD-Q4_K_M.gguf",

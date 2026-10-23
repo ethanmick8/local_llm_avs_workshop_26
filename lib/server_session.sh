@@ -5,7 +5,7 @@ api_key_file=""
 curl_config=""
 
 build_server_args() {
-    local key_path=$1 budget
+    local key_path=$1 budget threads threads_batch
     server_args=(
         "$llama_server_bin"
         --model "$model_file" --alias "$model"
@@ -13,11 +13,20 @@ build_server_args() {
         --api-key-file "$key_path" --no-webui --jinja
         --parallel "$(jq -r .llama.parallel "$profile_file")"
         --ctx-size "$(jq -r .limits.context "$profile_file")"
-        --threads "$(jq -r .llama.threads "$profile_file")"
-        --threads-batch "$(jq -r .llama.threads_batch "$profile_file")"
+    )
+    # "auto" leaves thread selection to llama.cpp, which sizes it to the host.
+    threads=$(jq -r .llama.threads "$profile_file")
+    threads_batch=$(jq -r .llama.threads_batch "$profile_file")
+    [[ "$threads" == auto ]] || server_args+=(--threads "$threads")
+    [[ "$threads_batch" == auto ]] || server_args+=(--threads-batch "$threads_batch")
+    case "$backend" in
+        cuda) server_args+=(--fit off --n-gpu-layers all --kv-offload) ;;
+        cpu) server_args+=(--fit off --device none --n-gpu-layers 0 --no-kv-offload) ;;
+    esac
+    server_args+=(
         --batch-size "$(jq -r .llama.batch_size "$profile_file")"
         --ubatch-size "$(jq -r .llama.ubatch_size "$profile_file")"
-        --fit off --n-gpu-layers all --flash-attn on --kv-offload
+        --flash-attn on
         --cache-type-k "$(jq -r .llama.cache_type_k "$profile_file")"
         --cache-type-v "$(jq -r .llama.cache_type_v "$profile_file")"
         --cache-prompt --metrics --log-timestamps

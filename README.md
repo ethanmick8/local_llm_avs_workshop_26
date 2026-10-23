@@ -2,9 +2,10 @@
 
 Run [OpenCode](https://github.com/anomalyco/opencode) against a local,
 pinned CUDA [llama.cpp](https://github.com/ggml-org/llama.cpp) server on a
-single 24 GB NVIDIA GPU (tuned for an RTX 3090). The server binds only to
-loopback, uses a fresh random API key per run, and is stopped when OpenCode
-exits.
+single 24 GB NVIDIA GPU (tuned for an RTX 3090). A much slower CPU-only
+Docker fallback is available for machines without an NVIDIA GPU. The server
+binds only to loopback, uses a fresh random API key per run, and is stopped
+when OpenCode exits.
 
 Model weights are **not** part of this repository; download them yourself
 (see [Models](#models)).
@@ -16,10 +17,11 @@ Model weights are **not** part of this repository; download them yourself
 | `gemma4-26b-a4b-q4-32k` | Gemma 4 26B-A4B IT Q4_0 | 14.6 GB |
 | `muse-glimmer-30b-q4-32k` | Muse Glimmer 30B Q4_K_M | 16.8 GB |
 | `qwen38-27b-q4-32k` | Qwen3.8 27B UD-Q4_K_M | 16.5 GB |
+| `gemma4-26b-a4b-q4-32k-cpu` | Gemma 4 26B-A4B IT Q4_0, CPU only ([Option A2](#option-a2-docker-cpu-only-fallback)) | 14.6 GB (same file) |
 
-All profiles use a 32k context, all layers on the GPU, Q8 K/V cache, and
-Flash Attention. Each one lives in `profiles/` with a matching OpenCode config
-in `configs/`.
+All profiles use a 32k context, Q8 K/V cache, and Flash Attention. The GPU
+profiles keep every layer on the GPU. Each one lives in `profiles/` with a
+matching OpenCode config in `configs/`.
 
 ## Models
 
@@ -61,6 +63,36 @@ from `site-config.json`, and the image tag changes when they do. At run time:
 - The container runs as your user, with all capabilities dropped.
 
 `LOCAL_LLM_GPU_DEVICE` selects the GPU index or UUID (default `0`).
+
+## Option A2: Docker, CPU-only fallback
+
+> **Performance warning.** CPU inference is far slower than the GPU path.
+> On a 36-thread workstation it measured about 66 tokens/s of prompt
+> processing and 14 tokens/s of generation. OpenCode sends a long system
+> prompt, so expect **about 2 minutes before the first reply** in a fresh
+> session on a fast desktop, and considerably longer on a laptop. Use it to try
+> things out when no NVIDIA GPU is available, not for interactive work.
+
+Requirements: x86-64 Linux (or WSL2) with Docker, `jq` on the host, and at
+least **32 GB of RAM**. No GPU, NVIDIA driver, or Container Toolkit is needed.
+Only the Gemma 4 26B-A4B profile is offered on CPU. It is a mixture-of-experts
+model with about 4B active parameters per token, so it is the only one of the
+three that is usable without a GPU. It uses the same GGUF file as the GPU
+Gemma profile.
+
+```bash
+LOCAL_LLM_BACKEND=cpu ./launch_open_code_docker.sh --build   # build the CPU image once
+./launch_open_code_docker.sh --check gemma4-26b-a4b-q4-32k-cpu ~/my-project
+./launch_open_code_docker.sh gemma4-26b-a4b-q4-32k-cpu ~/my-project
+```
+
+The profile selects the image: `*-cpu` profiles run in the
+`…-cpu` image, built with every x86-64 SIMD variant so llama.cpp picks the
+best one for your CPU at run time. The container gets no GPU device. llama.cpp
+chooses the thread count, startup may take up to
+`server.cpu_startup_timeout_seconds` (180 s), and the OpenCode config allows
+long waits for the first token. CPU profiles are Docker-only; the host-native
+launcher, GUI, and benchmark refuse or hide them.
 
 ## Option B: host-native (Conda)
 

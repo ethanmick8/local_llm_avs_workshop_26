@@ -2,6 +2,7 @@
   "id": "gemma4-26b-a4b-q4-32k",
   "model": "gemma-4-26B-A4B-it-Q4_0",
   "family": "gemma4",
+  "backend": "cuda",
   "gguf": "gemma-4-26B-A4B-it-Q4_0.gguf",
   "source": {
     "url": "https://huggingface.co/ggml-org/gemma-4-26B-A4B-it-GGUF/resolve/main/gemma-4-26B-A4B-it-Q4_0.gguf",

@@ -40,6 +40,7 @@ load_site() {
     jq -e '
       .conda_environment == "ml" and .data_root != "" and
       .server.host == "127.0.0.1" and (.server.port|type) == "number" and
+      (.server.cpu_startup_timeout_seconds|type) == "number" and
       (.tools.llama_cpp_commit|test("^[0-9a-f]{40}$")) and
       (.tools.opencode_version|test("^[0-9]+\\.[0-9]+\\.[0-9]+$")) and
       (.tools.opencode_sha256|test("^[0-9a-f]{64}$")) and
@@ -53,6 +54,7 @@ load_site() {
     (( server_port >= 1024 && server_port <= 65535 )) || die "LOCAL_LLM_PORT must be between 1024 and 65535"
     startup_timeout=$(jq -r .server.startup_timeout_seconds "$site_config")
     shutdown_timeout=$(jq -r .server.shutdown_timeout_seconds "$site_config")
+    cpu_startup_timeout=$(jq -r .server.cpu_startup_timeout_seconds "$site_config")
     pyqt_version=$(jq -r .tools.pyqt_version "$site_config")
 }
 
@@ -81,8 +83,13 @@ validate_profile_file() {
       (.source.sha256|test("^[0-9a-f]{64}$")) and (.source.size_bytes > 0) and
       (.opencode_config|test("^configs/[^/]+\\.json$")) and
       .limits == {context:32768,output:8192,compaction_reserved:8192,preserve_recent_tokens:4096,tail_turns:2} and
-      .llama.parallel == 1 and .llama.gpu_layers == "all" and
-      .llama.threads == 16 and .llama.threads_batch == 18 and
+      .llama.parallel == 1 and
+      (if .backend == "cuda" then
+         .llama.gpu_layers == "all" and .llama.threads == 16 and .llama.threads_batch == 18
+       elif .backend == "cpu" then
+         .family == "gemma4" and .llama.gpu_layers == 0 and
+         .llama.threads == "auto" and .llama.threads_batch == "auto"
+       else false end) and
       .llama.flash_attention == "on" and .llama.cache_type_k == "q8_0" and .llama.cache_type_v == "q8_0" and
       .llama.batch_size == 2048 and .llama.ubatch_size == 512 and
       (.reasoning.default_effort == "high") and
@@ -110,12 +117,47 @@ load_profile() {
     profile_file="$script_dir/profiles/$profile_id.json"
     [[ -f "$profile_file" ]] || die "unknown profile: $profile_id"
     validate_profile_file "$profile_file" "$profile_id"
+    backend=$(jq -r .backend "$profile_file")
     model=$(jq -r .model "$profile_file")
     gguf=$(jq -r .gguf "$profile_file")
     model_file="$model_root/$gguf"
     opencode_config="$script_dir/$(jq -r .opencode_config "$profile_file")"
     [[ -f "$opencode_config" ]] || die "OpenCode config not found: $opencode_config"
     validate_profile_config_match "$profile_file" "$opencode_config"
+}
+
+# CPU profiles run only inside the CPU image; the container's baked-in backend
+# must match the profile so a CUDA image never silently runs a CPU profile.
+resolve_backend() {
+    if [[ "${LOCAL_LLM_RUNTIME:-}" == container ]]; then
+        [[ "${LOCAL_LLM_BACKEND:-}" == "$backend" ]] ||
+            die "profile $profile_id needs the $backend image, but this container provides ${LOCAL_LLM_BACKEND:-an unknown backend}"
+    else
+        [[ "$backend" == cuda ]] ||
+            die "$backend profiles are Docker-only: launch_open_code_docker.sh $profile_id <workdir>"
+    fi
+    [[ "$backend" != cpu ]] || startup_timeout=$cpu_startup_timeout
+}
+
+require_backend_commands() {
+    [[ "$backend" != cuda ]] || require_command nvidia-smi
+}
+
+print_backend_hardware() {
+    case "$backend" in
+        cuda) nvidia-smi --query-gpu=name,memory.total --format=csv,noheader ;;
+        cpu) echo "CPU threads: $(nproc); memory: $(awk '/^MemTotal:/ {printf "%.1f GiB", $2/1048576}' /proc/meminfo)" ;;
+    esac
+}
+
+print_cpu_disclaimer() {
+    [[ "$backend" == cpu ]] || return 0
+    cat >&2 <<'EOF'
+CPU mode: expect roughly 10-15 tokens/s generation and several minutes before
+the first reply on a fresh session while the prompt is processed (about 2
+minutes on a fast desktop, longer on laptops). Needs at least 32 GB RAM.
+Use a CUDA profile on an NVIDIA GPU for interactive speed.
+EOF
 }
 
 resolve_reasoning_policy() {
@@ -165,5 +207,5 @@ create_private_tree() {
 }
 
 print_profile_summary() {
-    jq '{id,model,gguf,limits,llama,sampling,reasoning}' "$profile_file"
+    jq '{id,backend,model,gguf,limits,llama,sampling,reasoning}' "$profile_file"
 }

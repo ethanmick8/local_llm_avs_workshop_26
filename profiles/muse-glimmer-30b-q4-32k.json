@@ -2,6 +2,7 @@
   "id": "muse-glimmer-30b-q4-32k",
   "model": "muse-glimmer-30B",
   "family": "muse-glimmer",
+  "backend": "cuda",
   "gguf": "Muse-Glimmer-30B-KQuant-17GB-Q4_K_M.gguf",
   "source": {
     "url": "https://huggingface.co/meta-models/Muse-Glimmer-30B-GGUF/resolve/main/Muse-Glimmer-30B-KQuant-17GB-Q4_K_M.gguf",
